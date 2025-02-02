@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sole Mio - Meteo</title>
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<!-- New Header Section -->
+<header class="bg-gradient-to-t from-blue-400 to-blue-600 text-white shadow-lg">
+    <div class="container mx-auto px-4 py-6">
+        <div class="flex items-center justify-center">
+            <span class="text-yellow-300 text-4xl mr-3">☀️</span>
+            <h1 class="text-4xl font-bold">Sole Mio</h1>
+        </div>
+        <p class="text-center text-blue-100 mt-2">Un meteo che non fa cagare</p>
+    </div>
+</header>
+
+<main class="bg-gray-100 min-h-screen p-8">
+    <!-- Search Bar -->
+    <div class="max-w-2xl mx-auto mb-8">
+        <div class="relative">
+            <input type="text" onkeyup="searchWeather()" id="searchInput"
+                class="w-full p-4 rounded-lg border shadow-sm focus:ring-2 focus:ring-blue-400 focus:outline-none"
+                placeholder="Cerca una città...">
+            <button onclick="getCurrentLocation()"
+                class="absolute right-2 top-1/2 transform -translate-y-1/2 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600">
+                <span class="mr-2">📍</span> Usa posizione attuale
+            </button>
+        </div>
+    </div>
+
+    <!-- Current Weather Card -->
+    <div id="currentWeather" class="max-w-2xl mx-auto mb-8 bg-white rounded-lg shadow-lg p-6 hidden">
+        <div class="flex justify-between items-center mb-4">
+            <div>
+                <h2 id="cityName" class="text-2xl font-bold mb-2">-</h2>
+                <p id="currentTemp" class="text-4xl font-bold">-°C</p>
+                <p id="currentDesc" class="text-gray-600">-</p>
+            </div>
+            <div id="currentIcon" class="text-6xl">🌤️</div>
+        </div>
+        <div class="grid grid-cols-3 gap-4 mt-4 text-sm">
+            <div>
+                <p class="text-gray-600">Vento</p>
+                <p id="currentWind">- km/h</p>
+                <p id="currentWindDir">-</p>
+            </div>
+            <div>
+                <p class="text-gray-600">Umidità</p>
+                <p id="currentHumidity">-%</p>
+            </div>
+            <div>
+                <p class="text-gray-600">Precipitazioni</p>
+                <p id="currentPrecip">-%</p>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Weekly Forecast -->
+    <div id="weeklyForecast" class="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-7 gap-4 hidden">
+        <!-- Cards will be added dynamically -->
+    </div>
+
+    <script>
+    async function searchWeather() {
+        const searchInput = document.getElementById('searchInput').value;
+        if (!searchInput) return;
+
+        let latitude, longitude, name;
+
+        // Check if input contains coordinates
+        if (searchInput.includes(',')) {
+            // Parse coordinates directly
+            [latitude, longitude] = searchInput.split(',').map(coord => parseFloat(coord.trim()));
+            name = `${latitude.toFixed(2)}°N, ${longitude.toFixed(2)}°E`;
+        } else {
+            // Search by city name
+            const geoResponse = await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(searchInput)}&count=1&language=it&format=json`);
+            const geoData = await geoResponse.json();
+
+            if (!geoData.results || geoData.results.length === 0) {
+                //alert('Città non trovata');
+                return;
+            }
+
+            ({ latitude, longitude, name } = geoData.results[0]);
+        }
+
+        // Get weather data using coordinates
+        const weatherResponse = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max,windspeed_10m_max,winddirection_10m_dominant,relative_humidity_2m_max&current_weather=true&timezone=auto&hourly=relative_humidity_2m,precipitation_probability,windspeed_10m,winddirection_10m`);
+        const weatherData = await weatherResponse.json();
+
+            // Update current weather
+            document.getElementById('currentWeather').classList.remove('hidden');
+            document.getElementById('cityName').textContent = name;
+            document.getElementById('currentTemp').textContent = `${Math.round(weatherData.current_weather.temperature)}°C`;
+            document.getElementById('currentDesc').textContent = getWeatherDescription(weatherData.current_weather.weathercode);
+            document.getElementById('currentIcon').textContent = getWeatherIcon(weatherData.current_weather.weathercode);
+
+            const currentHour = new Date().getHours();
+            document.getElementById('currentWind').textContent = `${Math.round(weatherData.current_weather.windspeed)} km/h`;
+            document.getElementById('currentWindDir').textContent = getWindDirection(weatherData.current_weather.winddirection);
+            document.getElementById('currentHumidity').textContent = `${Math.round(weatherData.hourly.relative_humidity_2m[currentHour])}%`;
+            document.getElementById('currentPrecip').textContent = `${Math.round(weatherData.hourly.precipitation_probability[currentHour])}%`;
+
+            // Update weekly forecast
+            const weeklyContainer = document.getElementById('weeklyForecast');
+            weeklyContainer.classList.remove('hidden');
+            weeklyContainer.innerHTML = '';
+
+            for (let i = 0; i < 7; i++) {
+                const date = new Date(weatherData.daily.time[i]);
+                const card = `
+                    <div class="bg-white rounded-lg shadow-lg p-4">
+                        <p class="font-bold text-center">${date.toLocaleDateString('it-IT', { weekday: 'short' })}</p>
+                        <div class="text-center text-4xl my-2">${getWeatherIcon(weatherData.daily.weathercode[i])}</div>
+                        <div class="text-center mb-2">
+                            <p class="text-red-500">${Math.round(weatherData.daily.temperature_2m_max[i])}°</p>
+                            <p class="text-blue-500">${Math.round(weatherData.daily.temperature_2m_min[i])}°</p>
+                        </div>
+                        <div class="text-sm">
+                            <p>💨 ${Math.round(weatherData.daily.windspeed_10m_max[i])} km/h</p>
+                            <p>🧭 ${getWindDirection(weatherData.daily.winddirection_10m_dominant[i])}</p>
+                            <p>💧 ${weatherData.daily.relative_humidity_2m_max[i]}%</p>
+                            <p>🌧️ ${weatherData.daily.precipitation_probability_max[i]}%</p>
+                        </div>
+                    </div>
+                `;
+                weeklyContainer.innerHTML += card;
+            }
+        }
+
+        function getWeatherDescription(code) {
+            if (code === 0) return 'Sereno';
+            if (code <= 3) return 'Poco nuvoloso';
+            if (code <= 48) return 'Nebbia';
+            if (code <= 55) return 'Pioggia leggera';
+            if (code <= 65) return 'Pioggia';
+            if (code <= 67) return 'Pioggia gelata';
+            if (code <= 77) return 'Neve';
+            if (code <= 82) return 'Rovesci';
+            if (code <= 86) return 'Neve forte';
+            if (code <= 99) return 'Temporale';
+            return 'N/A';
+        }
+
+        function getWeatherIcon(code) {
+            if (code === 0) return '☀️';
+            if (code <= 3) return '🌤️';
+            if (code <= 48) return '🌫️';
+            if (code <= 55) return '🌦️';
+            if (code <= 65) return '🌧️';
+            if (code <= 67) return '🌨️';
+            if (code <= 77) return '🌨️';
+            if (code <= 82) return '🌧️';
+            if (code <= 86) return '🌨️';
+            if (code <= 99) return '⛈️';
+            return '❓';
+        }
+
+        // New function to convert wind direction degrees to cardinal directions
+        function getWindDirection(degrees) {
+            const directions = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+            const index = Math.round(degrees / 22.5) % 16;
+            return directions[index];
+        }
+
+        async function getCurrentLocation() {
+            if ("geolocation" in navigator) {
+                try {
+                    const position = await new Promise((resolve, reject) => {
+                        // Add timeout and enableHighAccuracy options
+                        const options = {
+                            timeout: 10000,          // 10 seconds timeout
+                            enableHighAccuracy: false, // Don't require high accuracy
+                            maximumAge: 0            // Don't use cached position
+                        };
+
+                        navigator.geolocation.getCurrentPosition(resolve, reject, options);
+                    });
+
+                    const { latitude, longitude } = position.coords;
+
+                    // Use alternative reverse geocoding service
+                    try {
+                        const response = await fetch(`https://geocoding-api.open-meteo.com/v1/reverse?latitude=${latitude}&longitude=${longitude}&language=it`);
+                        const data = await response.json();
+
+                        if (data.results && data.results.length > 0) {
+                            const cityName = data.results[0].name;
+                            document.getElementById('searchInput').value = cityName;
+                            await searchWeather();
+                        } else {
+                            // throw new Error('Città non trovata');
+                        }
+                    } catch (geocodingError) {
+                        // If reverse geocoding fails, use coordinates directly
+                        document.getElementById('searchInput').value = `${latitude.toFixed(4)}, ${longitude.toFixed(4)}`;
+                        await searchWeather();
+                    }
+                } catch (error) {
+                    let errorMessage = "Si è verificato un errore nel recupero della posizione.";
+
+                    switch (error.code) {
+                        case error.PERMISSION_DENIED:
+                            errorMessage = "Per utilizzare questa funzione, concedi l'accesso alla tua posizione.";
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMessage = "Informazioni sulla posizione non disponibili. Verifica che il GPS sia attivo e riprova.";
+                            break;
+                        case error.TIMEOUT:
+                            errorMessage = "Tempo scaduto nel recupero della posizione. Riprova.";
+                            break;
+                    }
+
+                    // Show error in a more user-friendly way
+                    const errorDiv = document.createElement('div');
+                    errorDiv.className = 'bg-red-100 border-l-4 border-red-500 text-red-700 p-4 mb-4 max-w-2xl mx-auto';
+                    errorDiv.innerHTML = `
+                    <p class="font-bold">Errore</p>
+                    <p>${errorMessage}</p>
+                `;
+
+                    // Insert error message before the search bar
+                    const searchContainer = document.querySelector('.max-w-2xl');
+                    searchContainer.parentNode.insertBefore(errorDiv, searchContainer);
+
+                    // Remove error message after 5 seconds
+                    setTimeout(() => {
+                        errorDiv.remove();
+                    }, 5000);
+
+                    console.error("Errore di geolocalizzazione:", error);
+                }
+            } else {
+                alert("Il tuo browser non supporta la geolocalizzazione.");
+            }
+        }
+
+        // Rest of the code remains the same
+
+    </script>
+    </body>
+
+</html>
